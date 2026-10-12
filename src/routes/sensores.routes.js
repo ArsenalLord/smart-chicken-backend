@@ -1,5 +1,6 @@
 
 import { Router } from "express";
+
 import {
   obterLeitura,
   listarHistorico,
@@ -8,21 +9,34 @@ import {
 
 const router = Router();
 
+// Retorna a leitura atual simulada.
 router.get("/", (req, res) => {
   res.json(obterLeitura());
 });
 
-router.get("/historico", (req, res) => {
+// Consulta o histórico salvo no PostgreSQL.
+router.get("/historico", async (req, res, next) => {
   const limite = Math.min(
     200,
     Math.max(1, Number(req.query.limite) || 50)
   );
 
-  res.json(listarHistorico(limite));
+  try {
+    const historico = await listarHistorico(limite);
+    res.json(historico);
+  } catch (erro) {
+    next(erro);
+  }
 });
 
-router.post("/historico", (req, res) => {
-  res.status(201).json(registrarHistorico());
+// Registra uma nova leitura no PostgreSQL.
+router.post("/historico", async (req, res, next) => {
+  try {
+    const leitura = await registrarHistorico();
+    res.status(201).json(leitura);
+  } catch (erro) {
+    next(erro);
+  }
 });
 
 export default router;

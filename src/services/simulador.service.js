@@ -1,16 +1,14 @@
 
 import { cenarios } from "../data/cenarios.js";
+import { pool } from "../db.js";
 
 let cenarioManual = null;
-
-const historico = [];
 
 function obterCenarioAtual() {
   if (cenarioManual) {
     return cenarioManual;
   }
 
-  // O cenário muda conforme o dia do mês.
   const nomes = ["normal", "calor", "intruso"];
   const indice = (new Date().getDate() - 1) % nomes.length;
 
@@ -41,9 +39,7 @@ export function ativarModoAutomatico() {
 export function obterLeitura() {
   const nomeCenario = obterCenarioAtual();
   const cenario = cenarios[nomeCenario];
-
   const ventilador = cenario.temperatura > 25;
-
   const alertas = [];
 
   if (cenario.temperatura > 25) {
@@ -78,7 +74,7 @@ export function obterLeitura() {
     });
   }
 
-  const leitura = {
+  return {
     timestamp: new Date().toISOString(),
     cenario: nomeCenario,
     temperatura: cenario.temperatura,
@@ -89,25 +85,66 @@ export function obterLeitura() {
     ventilador,
     alertas
   };
-
-  return leitura;
 }
 
-export function registrarHistorico() {
+export async function registrarHistorico() {
   const leitura = obterLeitura();
 
-  historico.push(leitura);
+  const resultado = await pool.query(
+    `INSERT INTO leituras_sensores (
+      timestamp,
+      cenario,
+      temperatura,
+      umidade,
+      luminosidade,
+      distancia,
+      movimento,
+      ventilador,
+      alertas
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    RETURNING id`,
+    [
+      leitura.timestamp,
+      leitura.cenario,
+      leitura.temperatura,
+      leitura.umidade,
+      leitura.luminosidade,
+      leitura.distancia,
+      leitura.movimento,
+      leitura.ventilador,
+      JSON.stringify(leitura.alertas)
+    ]
+  );
 
-  // Mantém somente as 500 leituras mais recentes.
-  if (historico.length > 500) {
-    historico.shift();
-  }
-
-  return leitura;
+  return {
+    ...leitura,
+    id: resultado.rows[0].id
+  };
 }
 
-export function listarHistorico(limite = 50) {
-  return historico.slice(-limite).reverse();
+export async function listarHistorico(limite = 50) {
+  const resultado = await pool.query(
+    `SELECT
+      id,
+      timestamp,
+      cenario,
+      temperatura,
+      umidade,
+      luminosidade,
+      distancia,
+      movimento,
+      ventilador,
+      alertas
+    FROM leituras_sensores
+    ORDER BY timestamp DESC, id DESC
+    LIMIT $1`,
+    [limite]
+  );
+
+  return resultado.rows.map((linha) => ({
+    ...linha,
+    timestamp: new Date(linha.timestamp).toISOString()
+  }));
 }
 
 export function obterAlertas() {
